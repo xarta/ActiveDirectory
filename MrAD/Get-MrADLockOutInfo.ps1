@@ -1,4 +1,23 @@
-﻿#Requires -Version 3.0
+#Requires -Version 3.0
+
+[CmdletBinding()] 
+param ( 
+	[ValidateNotNullOrEmpty()] 
+	[string]$DomainName = $env:USERDOMAIN, 
+
+	[ValidateNotNullOrEmpty()] 
+	[string]$UserName = '*', 
+
+	[ValidateNotNullOrEmpty()] 
+	[datetime]$StartTime = (Get-Date).AddDays(-3),
+
+	[System.Management.Automation.Credential()]$Credential = [System.Management.Automation.PSCredential]::Empty,
+
+	[ValidateNotNullOrEmpty()]
+	[string]$Id = 4740                           <# AMMEND HERE - REQUIRED ID PARAMETER, OR, PASS IN AS -id #>
+)
+	
+	
 function Get-MrADLockOutInfo {
 
 <# 
@@ -14,14 +33,12 @@ function Get-MrADLockOutInfo {
   
 .PARAMETER StartTime 
     The datetime to start searching the event logs from. The default is the past three days.
-
 .PARAMETER Credential
     Specifies a user account that has permission to read the security event log on the PDC emulator. The default is
     the current user.
   
 .EXAMPLE 
     Get-MrADLockOutInfo
-
 .EXAMPLE
     Get-MrADLockOutInfo -Credential (Get-Credential)
   
@@ -33,21 +50,12 @@ function Get-MrADLockOutInfo {
   
 .EXAMPLE 
     Get-MrADLockOutInfo -UserName 'mikefrobbins' -StartTime (Get-Date).AddDays(-1) -Credential (Get-Credential)
-#> 
- 
-    [CmdletBinding()] 
-    param ( 
-        [ValidateNotNullOrEmpty()] 
-        [string]$DomainName = $env:USERDOMAIN, 
- 
-        [ValidateNotNullOrEmpty()] 
-        [string]$UserName = '*', 
- 
-        [ValidateNotNullOrEmpty()] 
-        [datetime]$StartTime = (Get-Date).AddDays(-3),
 
-        [System.Management.Automation.Credential()]$Credential = [System.Management.Automation.PSCredential]::Empty
-    )
+    DAVE NOTE: 4740 event (normal)
+    DAVE NOTE: 4625 event (Log On type 3)
+    DAVE NOTE: 4624 event - log on successful I think
+    DAVE NOTE: SEE https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/
+#> 
 
     try {
         $ErrorActionPreference = 'Stop'
@@ -68,12 +76,24 @@ function Get-MrADLockOutInfo {
         $Params.Credential = $Credential
     }
 
-    Invoke-Command -ComputerName $PdcEmulator { 
-        Get-WinEvent -FilterHashtable @{LogName='Security';Id=4740;StartTime=$Using:StartTime} |
+    $a = Invoke-Command -ComputerName $PdcEmulator { 
+        Get-WinEvent -ErrorAction Ignore -FilterHashtable @{LogName='Security';Id=$Using:Id;StartTime=$Using:StartTime} |
         Where-Object {$_.Properties[0].Value -like "$Using:UserName"} |
         Select-Object -Property TimeCreated,
                                 @{Label='UserName';Expression={$_.Properties[0].Value}},
                                 @{Label='ClientName';Expression={$_.Properties[1].Value}}
     } @Params | 
-    Select-Object -Property TimeCreated, UserName, ClientName
+    Select-Object -Property TimeCreated, UserName, ClientName <# -First 1 #>    
+
+    Write-Host "<prtg>"
+    Write-Host "<result>"
+    "<channel>Locked Out Users</channel>"
+    "<value>"+ @($a).Count +"</value>"
+    "</result>"
+    "<text>" + $Id + ", first one: " + @($a)[0] + "</text>"
+    Write-Host "</prtg>"
+    
+
 }
+
+Get-MrADLockOutInfo;
